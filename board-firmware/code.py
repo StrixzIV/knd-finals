@@ -16,6 +16,26 @@ def get_input(pin_id):
         active_inputs[pin_id] = AsyncInput(pin_id, pull_up=True)
     return active_inputs[pin_id]
 
+# Pre-config input pins
+# SW_NO1 -> GP16
+# SW_NO2 -> GP17
+# SW_NO3 -> GP18
+# SW_NO4 -> GP19
+for limit_sw_pin in [16, 17, 18, 19]:
+    get_input(limit_sw_pin)
+
+# Pre-config output pins
+# GP0 -> PUL+ #1
+# GP1 -> DIR+ #1
+# GP2 -> PUL+ #2
+# GP3 -> DIR+ #2
+# GP4 -> PUL+ #3
+# GP5 -> DIR+ #3
+# GP6 -> PUL+ #4
+# GP7 -> DIR+ #4
+for limit_sw_pin in [0, 1, 2, 3, 4, 5, 6, 7]:
+    get_output(limit_sw_pin)
+
 print("MOTION 2350: SCARA GPIO Bridge Ready.")
 
 while True:
@@ -32,21 +52,20 @@ while True:
                     available.sort(key=lambda x: int(x[2:]))
                     print(f"PINS:{','.join(available)}")
                 
-                # --- I: INPUT MODE ---
+                # --- I: SET INPUT ---
                 elif cmd == "I" and len(parts) >= 2:
                     pin = int(parts[1])
                     get_input(pin) 
                     print(f"ACK: Monitor GP{pin}")
 
-                # --- O: OUTPUT STATIC (NEW) ---
-                # Format: O:<Pin>:<1/0>
+                # --- O: SET OUTPUT ---
                 elif cmd == "O" and len(parts) >= 3:
                     pin = int(parts[1])
                     val = int(parts[2])
                     get_output(pin).set_value(val)
                     print(f"ACK: GP{pin}={'HIGH' if val else 'LOW'}")
 
-                # --- B: BLINK (Optional) ---
+                # --- B: BLINK ---
                 elif cmd == "B" and len(parts) >= 4:
                     pin = int(parts[1])
                     cnt = int(parts[2])

@@ -16,8 +16,9 @@ It enables the robot to:
 ├── board-firmware/       # Code running on the Motion 2350 Pro
 │   ├── code.py           # Main loop & Serial Protocol Handler
 │   └── async_pin.py      # Non-blocking GPIO & Input Debouncing classes
-├── ros2_bridge/          # ROS 2 Node running on the Host (Mac/Linux)
-│   └── controller.py     # The Python Node
+├── ros2-node/            # ROS 2 Nodes running on the Host (Mac/Linux)
+│   ├── motion_2350_bridge.py # The Serial <-> ROS Bridge
+│   └── scara_gpio_brain.py   # Example logic (Blink counter)
 └── README.md
 
 ```
@@ -43,7 +44,7 @@ The firmware listens on the USB Serial port (115200 baud).
 | **Blink** | `B:<Pin>:<Cnt>:<Spd>` | Blink a pin `Cnt` times at `Spd` seconds. | `B:25:5:0.2` |
 | **Set Input** | `I:<Pin>` | Configure pin as Input (Pull-Up). | `I:20` |
 
-### Events (Board  Host)
+### Events (Board -> Host)
 
 When a configured Input pin changes state (debounced), the board sends:
 
@@ -55,74 +56,79 @@ When a configured Input pin changes state (debounced), the board sends:
 
 ---
 
-## 2. ROS 2 Bridge (Host Side)
+## 2. ROS 2 Nodes (Host Side)
 
 ### Dependencies
 
-* ROS 2 (Humble/Iron/Jazzy)
+* ROS 2 (Humble/Iron/Jazzy/Rolling)
 * Python `pyserial`: `pip install pyserial`
 
-### Configuration
+### A. The Bridge (`motion_2350_bridge.py`)
 
-Edit `ros2_bridge/controller.py` to match your USB port:
+This node handles the serial communication with the board and translates it to ROS 2 topics.
+
+#### Configuration
+
+Edit `ros2-node/motion_2350_bridge.py` to match your USB port:
 
 ```python
 self.port = '/dev/tty.usbmodem1101'  # macOS example
 # self.port = '/dev/ttyACM0'         # Linux example
-
 ```
 
-### Running the Node
+#### Running the Bridge
 
 ```bash
-python3 ros2_bridge/controller.py
-
+python3 ros2-node/motion_2350_bridge.py
 ```
 
-### Topics & API
+### B. How to Configure Pins
 
-#### 1. Configure Hardware (`/scara/gpio/config`)
+Pins are configured dynamically via ROS topics. You do not need to reboot the board to change a pin's function.
 
-* **Type:** `std_msgs/msg/String`
-* **Usage:**
-* `"list"`: Asks the board to print available pins to the node logger.
-* `"16:in"`: Configures GP16 as a digital input (limit switch).
+#### 1. Set a Pin as INPUT (e.g., Limit Switch, Button)
+To monitor a sensor, you must tell the board to start watching that pin.
+*   **Topic**: `/scara/gpio/config`
+*   **Format**: `"<PinNumber>:in"`
+*   **Command**:
+    ```bash
+    ros2 topic pub --once /scara/gpio/config std_msgs/msg/String "data: '20:in'"
+    ```
+    *Once configured, the board will publish state changes (0=Pressed, 1=Released) to `/scara/gpio/in`.*
 
+#### 2. Set a Pin as OUTPUT (e.g., LED, Relay, Gripper)
+Outputs are initialized automatically the first time you send a command to them.
+*   **Topic**: `/scara/gpio/out`
+*   **Formats**:
+    *   `"<PinNumber>:1"` (ON)
+    *   `"<PinNumber>:0"` (OFF)
+    *   `"<PinNumber>:B:<Count>:<Speed>"` (Blink)
+*   **Example (Turn on GP16)**:
+    ```bash
+    ros2 topic pub --once /scara/gpio/out std_msgs/msg/String "data: '16:1'"
+    ```
 
+### C. The Logic Brain (`scara_gpio_brain.py`)
+
+An example node that listens for button presses on **GP20** and triggers a blink sequence on **GP16** after a short timeout.
+
+> [!IMPORTANT]
+> Before using the brain, you **must** configure GP20 as an input. Run this command while the Bridge is active:
+> ```bash
+> ros2 topic pub --once /scara/gpio/config std_msgs/msg/String "data: '20:in'"
+> ```
+
+#### Running the Brain
 
 ```bash
-ros2 topic pub --once /scara/gpio/config std_msgs/msg/String "data: '20:in'"
-
+python3 ros2-node/scara_gpio_brain.py
 ```
 
-#### 2. Control Outputs (`/scara/gpio/out`)
-
-* **Type:** `std_msgs/msg/String`
-* **Usage:**
-* `"16:1"`: Turn GP16 **ON**.
-* `"16:0"`: Turn GP16 **OFF**.
-* `"16:B:5:0.5"`: Blink GP16, 5 times, 0.5s interval.
-
-
-
-```bash
-ros2 topic pub --once /scara/gpio/out std_msgs/msg/String "data: '16:1'"
-
-```
-
-#### 3. Read Inputs (`/scara/gpio/in`)
-
-* **Type:** `std_msgs/msg/String`
-* **Data Format:** `"<Pin>:<0|1>"`
-* **Usage:** Subscribe to this topic to react to limit switches.
-
-```bash
-ros2 topic echo /scara/gpio/in
-# Output:
-# data: "20:0"  <-- Switch Pressed
-# data: "20:1"  <-- Switch Released
-
-```
+#### How it works:
+1.  Ensure the Bridge is running and GP20 is configured as an input.
+2.  Press the button on GP20 multiple times.
+3.  Wait 1.5 seconds.
+4.  The Brain sends a command to the Bridge to blink the LED on GP16 the same number of times you pressed the button.
 
 ---
 

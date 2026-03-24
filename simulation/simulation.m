@@ -6,9 +6,9 @@ function simulation()
 clear; clc; close all;
 
 %% Robot parameters
-L1 = 0.4;   % Link 1 length (m)
-L2 = 0.3;   % Link 2 length (m)
-d1 = 0.1;   % Fixed base height (m)
+L1 = 0.245;   % Link 1 length (m)
+L2 = 0.155;   % Link 2 length (m)
+d1 = 0.1075;   % Fixed base height (m)
 
 %% Build the figure
 fig = uifigure('Name', 'SCARA RPRR Simulator', ...

@@ -6,11 +6,11 @@ function workspace_sim()
 clear; clc; close all;
 
 %% Robot parameters — match your simulation.m values
-L1  = 0.4;    % Link 1 length (m)
-L2  = 0.3;    % Link 2 length (m)
-d1  = 0.1;    % Fixed base height (m)
+L1 = 0.245;   % Link 1 length (m)
+L2 = 0.155;   % Link 2 length (m)
+d1 = 0.1075;   % Fixed base height (m)
 d2_min = 0.0; % Prismatic min (m)
-d2_max = 0.3; % Prismatic max (m)
+d2_max = 0.25; % Prismatic max (m)
 
 r_max = L1 + L2;          % 0.70 m  — fully extended
 r_min = abs(L1 - L2);     % 0.10 m  — fully folded

@@ -53,9 +53,9 @@ bridge:
 	@echo "🌉 Starting Hardware Bridge..."
 	$(PYTHON) $(ROS_DIR)/motion_2350_bridge.py
 
-brain:
-	@echo "🧠 Starting Logic Brain..."
-	$(PYTHON) $(ROS_DIR)/scara_gpio_brain.py
+teleop:
+	@echo "🧠 Starting teleop..."
+	$(PYTHON) $(ROS_DIR)/teleop.py
 
 deps:
 	$(PYTHON) -m pip install pyserial

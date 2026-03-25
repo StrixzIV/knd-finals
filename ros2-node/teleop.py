@@ -8,6 +8,8 @@ import select
 import termios
 import tty
 import time
+import math
+import numpy as np
 
 # --- KINEMATIC CONFIGURATION ---
 # Format: [PUL_PIN, DIR_PIN, STEPS_PER_UNIT, LIMIT_MIN, LIMIT_MAX, CURRENT_POS, READY_TIME]
@@ -58,14 +60,62 @@ class ScaraTeleop(Node):
         print(INSTRUCTIONS)
         self.print_status()
 
+    def compute_fk(self):
+        """Computes Forward Kinematics based on the provided DH parameters."""
+        # Add 90 degrees (pi/2) to Joint 1 so that physical 0 degrees points along +Y instead of +X
+        th1 = math.radians(MOTORS['M1']['pos']) + (math.pi / 2.0)
+        d2 = MOTORS['M2']['pos'] / 100.0  # Convert cm to meters
+        th3 = math.radians(MOTORS['M3']['pos'])
+        th4 = math.radians(MOTORS['M4']['pos'])
+
+        # DH Table Format: [a, alpha(rad), d, theta(rad)]
+        dh_table = [
+            [0.0, 0.0, 0.08425, th1],          # Joint 1
+            [0.0, 0.0, d2, 0.0],               # Joint 2 (Prismatic)
+            [0.24, math.pi, 0.0, th3],         # Joint 3 (alpha = 180 degrees)
+            [0.147, 0.0, -0.06375, th4],       # Joint 4
+            [0.0, 0.0, -0.1535, 0.0]           # Joint 5 (End Effector Offset)
+        ]
+
+        # Initialize Base Frame
+        T = np.eye(4)
+        
+        # Multiply transformation matrices sequentially
+        for a, alpha, d, theta in dh_table:
+            ct = math.cos(theta)
+            st = math.sin(theta)
+            ca = math.cos(alpha)
+            sa = math.sin(alpha)
+
+            A = np.array([
+                [ct, -st*ca,  st*sa, a*ct],
+                [st,  ct*ca, -ct*sa, a*st],
+                [0,   sa,     ca,    d],
+                [0,   0,      0,     1]
+            ])
+            T = T @ A
+
+        # Extract X, Y, Z from the final transformation matrix
+        x, y, z = T[0, 3], T[1, 3], T[2, 3]
+        
+        # Extract Yaw (rotation around global Z-axis)
+        yaw_rad = math.atan2(T[1, 0], T[0, 0])
+        yaw_deg = math.degrees(yaw_rad)
+        
+        return x, y, z, yaw_deg
+
     def print_status(self):
-        status = (f"\rJog Size: {self.jog_deg:.1f}° / {self.jog_cm:.1f}cm | "
-                  f"Pos -> M1:{MOTORS['M1']['pos']:.1f}° "
+        
+        x, y, z, yaw = self.compute_fk()
+        
+        status = (f"\rJog: {self.jog_deg:.1f}°/{self.jog_cm:.1f}cm | "
+                  f"XYZ(m): [{x:.3f}, {y:.3f}, {z:.3f}] Yaw: {yaw:.1f}° | "
+                  f"M1:{MOTORS['M1']['pos']:.1f}° "
                   f"M2:{MOTORS['M2']['pos']:.1f}cm "
                   f"M3:{MOTORS['M3']['pos']:.1f}° "
                   f"M4:{MOTORS['M4']['pos']:.1f}°")
-        # Flush standard out so the terminal updates smoothly, padding with spaces clears artifact text
-        print(f"{status:<85}", end='', flush=True)
+        
+        print(f"{status:<130}", end='', flush=True)
 
     def move_motor(self, motor_key, direction):
         m = MOTORS[motor_key]

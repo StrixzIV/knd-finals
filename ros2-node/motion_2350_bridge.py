@@ -47,9 +47,11 @@ class Motion2350Bridge(Node):
         """
         Controls outputs.
         Formats:
-          "16:1"       -> Turn GP16 ON
-          "16:0"       -> Turn GP16 OFF
-          "16:B:5:0.2" -> Blink GP16, 5 times, 0.2s interval
+          "16:1"         -> Turn GP16 ON
+          "16:0"         -> Turn GP16 OFF
+          "16:B:5:0.2"   -> Blink GP16, 5 times, 0.2s interval
+          "7:T:1.0:0.5"  -> Timed Servo on GP7, Throttle 1.0, 0.5 sec
+          "7:S:0.0"      -> Continuous Servo on GP7, Stop (Throttle 0.0)
         """
         data = msg.data.strip()
         parts = data.split(":")
@@ -58,12 +60,21 @@ class Motion2350Bridge(Node):
 
         try:
             pin = parts[0]
-            # Check for Blink command (longer format)
+            
+            # Check for Blink command (B:Pin:Count:Speed)
             if len(parts) >= 4 and parts[1].upper() == 'B':
-                # Format: B:Pin:Count:Speed
                 cmd = f"B:{pin}:{parts[2]}:{parts[3]}\n"
+                
+            # Check for Timed Servo command (T:Pin:Throttle:Duration)
+            elif len(parts) >= 4 and parts[1].upper() == 'T':
+                cmd = f"T:{pin}:{parts[2]}:{parts[3]}\n"
+                
+            # Check for Continuous Servo command (S:Pin:Throttle)
+            elif len(parts) >= 3 and parts[1].upper() == 'S':
+                cmd = f"S:{pin}:{parts[2]}\n"
+                
+            # Standard On/Off (O:Pin:Value)
             else:
-                # Standard On/Off: O:Pin:Value
                 val = int(parts[1])
                 cmd = f"O:{pin}:{val}\n"
             

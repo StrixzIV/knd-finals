@@ -28,6 +28,8 @@ KEY_BINDINGS = {
     'w': ('M2', 1),  's': ('M2', -1),
     'e': ('M3', 1),  'd': ('M3', -1),
     'r': ('M4', 1),  'f': ('M4', -1),
+    't': ('GRIPPER', 1.0),   # Open (Forward Throttle)
+    'g': ('GRIPPER', -1.0),  # Close (Reverse Throttle)
 }
 
 INSTRUCTIONS = """
@@ -40,6 +42,7 @@ Moving Joints (Degrees / cm):
    W / S : Z-Axis   (+ / -)
    E / D : Elbow J3 (+ / -)
    R / F : Wrist J4 (+ / -)
+   T / G : Gripper  (Open / Close)
 
 Settings:
    + / - : Increase/Decrease Jog Step Size
@@ -117,6 +120,17 @@ class ScaraTeleop(Node):
         
         print(f"{status:<130}", end='', flush=True)
 
+    def move_gripper(self, throttle):
+        
+        duration = 0.3
+        
+        msg = String()
+        msg.data = f"7:T:{throttle}:{duration}"
+        self.pub_out.publish(msg)
+        
+        print(f"\n[GRIPPER] Actuated (Throttle: {throttle} for {duration}s)")
+        self.print_status()
+
     def move_motor(self, motor_key, direction):
         m = MOTORS[motor_key]
         now = time.time()
@@ -185,8 +199,11 @@ def main(args=None):
         while rclpy.ok():
             key = get_key(settings)
             if key in KEY_BINDINGS:
-                motor, direction = KEY_BINDINGS[key]
-                node.move_motor(motor, direction)
+                target, direction = KEY_BINDINGS[key]
+                if target == 'GRIPPER':
+                    node.move_gripper(direction)
+                else:
+                    node.move_motor(target, direction)
             elif key == '+':
                 node.adjust_jog_size(1.5)
             elif key == '-':

@@ -1,4 +1,5 @@
-%% SCARA RPRR Interactive Simulator — FK / IK
+%% SCARA RPRR Interactive Simulator — FK / IK  (corrected geometric FK)
+%
 % Joint limits, step calibration and DH parameters all match teleop.py:
 %
 %   M1 (J1 Base)  : 1000 steps = 45 deg,  joint limit ±80 deg
@@ -19,38 +20,40 @@
 function simulation()
 clear; clc; close all;
 
-%% ─── Robot parameters (DH / teleop.py) ──────────────────────────────
-L1   = 0.24;      % Link 1 — DH a for J3 row  (m)
-L2   = 0.147;     % Link 2 — DH a for J4 row  (m)
-d1   = 0.08425;   % Fixed base column height   (m)
+%% ─── Robot parameters ───────────────────────────────────────────────
+L1      = 0.24;      % Link 1 length (shoulder → elbow), m
+L2      = 0.147;     % Link 2 length (elbow → wrist),   m
+d1      = 0.08425;   % Fixed base column height,         m
+d_j4    = 0.06375;   % J4 frame Z-offset (downward),     m
+d_ee    = 0.1535;    % EE tool Z-offset  (downward),     m
+d_tool  = d_j4 + d_ee;   % total tool hang length = 0.22025 m
 
-% ── Joint limits from teleop.py MOTORS dict ───────────────────────────
-J1_MIN = -80;  J1_MAX =  80;   % degrees (joint space)
-J2_MIN =  0.0; J2_MAX =  0.13; % metres  (0–13 cm)
-J3_MIN = -80;  J3_MAX =  80;   % degrees
-J4_MIN = -80;  J4_MAX =  80;   % degrees
+%% ─── Joint limits ───────────────────────────────────────────────────
+J1_MIN = -80;  J1_MAX =  80;    % deg
+J2_MIN =  0.0; J2_MAX =  0.13;  % m
+J3_MIN = -80;  J3_MAX =  80;    % deg
+J4_MIN = -80;  J4_MAX =  80;    % deg
 
-HOME_OFFSET = 90.0;  % degrees — physical 0 deg → +Y axis
+HOME_OFFSET = 90.0;   % physical zero → +Y axis
 
 r_max = L1 + L2;
-r_min = abs(L1 - L2);
 
-%% ─── Figure ──────────────────────────────────────────────────────────
-fig = uifigure('Name', 'SCARA RPRR Simulator', ...
+%% ─── Figure ─────────────────────────────────────────────────────────
+fig = uifigure('Name', 'SCARA RPRR Simulator (corrected)', ...
                'Position', [100 100 960 680]);
 
-%% ─── 3-D axes ────────────────────────────────────────────────────────
+%% ─── 3-D axes ───────────────────────────────────────────────────────
 ax = uiaxes(fig, 'Position', [270 20 670 640]);
 ax.XLim = [-0.5 0.5];
 ax.YLim = [-0.5 0.5];
-ax.ZLim = [0 0.3];
+ax.ZLim = [0 0.4];
 ax.XLabel.String = 'X (m)';
 ax.YLabel.String = 'Y (m)';
 ax.ZLabel.String = 'Z (m)';
 grid(ax, 'on'); hold(ax, 'on'); view(ax, 45, 30);
-title(ax, 'SCARA RPRR — FK Mode');
+title(ax, 'SCARA RPRR — FK Mode  [geometric, corrected]');
 
-%% ─── Mode toggle ─────────────────────────────────────────────────────
+%% ─── Mode toggle ────────────────────────────────────────────────────
 uilabel(fig, 'Position', [10 638 245 22], ...
     'Text', 'Mode', 'FontWeight', 'bold', 'FontSize', 13);
 mode_btn = uibutton(fig, 'state', ...
@@ -59,7 +62,7 @@ mode_btn = uibutton(fig, 'state', ...
     'FontSize', 11, ...
     'ValueChangedFcn', @(btn,~) toggleMode(btn));
 
-%% ─── FK Panel ────────────────────────────────────────────────────────
+%% ─── FK Panel ───────────────────────────────────────────────────────
 fk_panel = uipanel(fig, 'Title', 'Forward Kinematics', ...
     'Position', [10 295 250 305], 'FontWeight', 'bold');
 
@@ -100,13 +103,12 @@ sld_d2 = uislider(fk_panel, 'Position', [10 73 210 3], ...
 lbl_d2 = uilabel(fk_panel, 'Position', [162 85 68 20], ...
     'Text', '0.060 m', 'HorizontalAlignment', 'right');
 
-%% ─── IK Panel ────────────────────────────────────────────────────────
+%% ─── IK Panel ───────────────────────────────────────────────────────
 ik_panel = uipanel(fig, 'Title', 'Inverse Kinematics', ...
     'Position', [10 295 250 305], 'FontWeight', 'bold', 'Visible', 'off');
 
-r_slide = r_max * 0.98;   % safe slider range (just inside max reach)
+r_slide = r_max * 0.98;
 
-% X target
 uilabel(ik_panel, 'Position', [10 250 200 20], ...
     'Text', sprintf('X target (m)  [±%.2f]', r_slide));
 sld_x = uislider(ik_panel, 'Position', [10 238 210 3], ...
@@ -115,7 +117,6 @@ sld_x = uislider(ik_panel, 'Position', [10 238 210 3], ...
 lbl_x = uilabel(ik_panel, 'Position', [162 250 68 20], ...
     'Text', '0.250 m', 'HorizontalAlignment', 'right');
 
-% Y target
 uilabel(ik_panel, 'Position', [10 195 200 20], ...
     'Text', sprintf('Y target (m)  [±%.2f]', r_slide));
 sld_y = uislider(ik_panel, 'Position', [10 183 210 3], ...
@@ -124,7 +125,6 @@ sld_y = uislider(ik_panel, 'Position', [10 183 210 3], ...
 lbl_y = uilabel(ik_panel, 'Position', [162 195 68 20], ...
     'Text', '0.250 m', 'HorizontalAlignment', 'right');
 
-% d2 height
 uilabel(ik_panel, 'Position', [10 140 200 20], ...
     'Text', sprintf('d₂ height (m)  [0 … %.2f m]', J2_MAX));
 sld_z = uislider(ik_panel, 'Position', [10 128 210 3], ...
@@ -133,7 +133,6 @@ sld_z = uislider(ik_panel, 'Position', [10 128 210 3], ...
 lbl_z = uilabel(ik_panel, 'Position', [162 140 68 20], ...
     'Text', '0.060 m', 'HorizontalAlignment', 'right');
 
-% θ4 wrist
 uilabel(ik_panel, 'Position', [10 85 200 20], ...
     'Text', sprintf('θ₄ Wrist (°)  [%+d … %+d]', J4_MIN, J4_MAX));
 sld_t4ik = uislider(ik_panel, 'Position', [10 73 210 3], ...
@@ -161,27 +160,25 @@ btn_reset = uibutton(traj_panel, 'push', ...
     'ButtonPushedFcn', @(~,~) resetPlot());
 
 uilabel(traj_panel, 'Position', [10 135 230 20], ...
-    'Text', 'End-Effector (DH FK):', 'FontWeight', 'bold');
+    'Text', 'End-Effector (geometric FK):', 'FontWeight', 'bold');
 lbl_ee = uilabel(traj_panel, 'Position', [10 65 230 70], ...
     'Text', 'X: —   Y: —   Z: —', 'FontSize', 10, 'WordWrap', 'on');
 
 lbl_warn = uilabel(traj_panel, 'Position', [10 10 230 52], ...
     'Text', '', 'FontColor', [0.8 0.1 0.1], 'FontSize', 9, 'WordWrap', 'on');
 
-%% ─── Shared state ────────────────────────────────────────────────────
-state = struct();
-state.mode    = 'fk';
-% FK joint-space values (degrees / metres, joint frame)
-state.t1      = 0;       % J1 joint deg  (home = arm along +Y)
-state.t3      = 0;     % J3 joint deg
-state.t4      = 0;       % J4 joint deg
-state.d2      = 0;    % J2 metres
-% IK target values
-state.x_ik    = 0.25;
-state.y_ik    = 0.25;
-state.z_ik    = 0.06;
-state.t4ik    = 0;
-state.steps   = 80;
+%% ─── Shared state ───────────────────────────────────────────────────
+state        = struct();
+state.mode   = 'fk';
+state.t1     = 0;
+state.t3     = -45;
+state.t4     = 0;
+state.d2     = 0.06;
+state.x_ik   = 0.25;
+state.y_ik   = 0.25;
+state.z_ik   = 0.06;
+state.t4ik   = 0;
+state.steps  = 80;
 state.trail_x = [];
 state.trail_y = [];
 state.trail_z = [];
@@ -222,13 +219,13 @@ drawRobot(state);
             btn.Text = 'IK Mode  |  Switch to FK';
             fk_panel.Visible = 'off';
             ik_panel.Visible = 'on';
-            title(ax, 'SCARA RPRR — IK Mode');
+            title(ax, 'SCARA RPRR — IK Mode  [geometric, corrected]');
         else
             state.mode = 'fk';
-            btn.Text = 'FK Mode  |  Switch to IK';
+            btn.Text = 'FK Mode  |  Switch to FK';
             fk_panel.Visible = 'on';
             ik_panel.Visible = 'off';
-            title(ax, 'SCARA RPRR — FK Mode');
+            title(ax, 'SCARA RPRR — FK Mode  [geometric, corrected]');
         end
         state.trail_x = []; state.trail_y = []; state.trail_z = [];
         drawRobot(state);
@@ -241,24 +238,21 @@ drawRobot(state);
     end
 
     function runTrajectory()
-        % Clamp helper: keep joint values inside hardware limits
         clampJ = @(v, lo, hi) max(min(v, hi), lo);
 
         if strcmp(state.mode, 'fk')
             q_start = [state.t1, state.d2, state.t3, state.t4];
-            % Demo end-pose: perturb within joint limits
-            q_end = [clampJ(state.t1 + 40, J1_MIN, J1_MAX), ...
-                     clampJ(state.d2 + 0.05, J2_MIN, J2_MAX), ...
-                     clampJ(state.t3 - 30, J3_MIN, J3_MAX), ...
-                     clampJ(state.t4 + 20, J4_MIN, J4_MAX)];
+            q_end   = [clampJ(state.t1 + 40, J1_MIN, J1_MAX), ...
+                       clampJ(state.d2 + 0.05, J2_MIN, J2_MAX), ...
+                       clampJ(state.t3 - 30, J3_MIN, J3_MAX), ...
+                       clampJ(state.t4 + 20, J4_MIN, J4_MAX)];
         else
             sol1 = ikSolveJoint(state.x_ik, state.y_ik, L1, L2, HOME_OFFSET);
             sol2 = ikSolveJoint(state.x_ik - 0.10, state.y_ik + 0.10, L1, L2, HOME_OFFSET);
             if isempty(sol1) || isempty(sol2)
-                lbl_warn.Text = 'IK: one or both poses unreachable within workspace.';
+                lbl_warn.Text = 'IK: one or both poses unreachable.';
                 return;
             end
-            % Check J3 stays within ±80°
             if abs(sol1(2)) > J3_MAX || abs(sol2(2)) > J3_MAX
                 lbl_warn.Text = 'IK: elbow angle exceeds ±80° joint limit.';
                 return;
@@ -277,8 +271,7 @@ drawRobot(state);
 
         for i = 1:N
             t1 = Q(i,1); d2 = Q(i,2); t3 = Q(i,3); t4 = Q(i,4);
-
-            [ex, ey, ez] = fkFull(t1, d2, t3, t4, d1, HOME_OFFSET);
+            [ex, ey, ez, ~, ~, ~] = geomFK(t1, d2, t3, t4, d1, HOME_OFFSET, L1, L2, d_tool);
             state.trail_x(i) = ex;
             state.trail_y(i) = ey;
             state.trail_z(i) = ez;
@@ -325,51 +318,91 @@ drawRobot(state);
             end
         end
 
-        % ── Full DH forward kinematics ─────────────────────────────
-        [ex, ey, ez, yaw_deg, j2x, j2y] = fkFullViz(j1, d2, j3, j4, d1, HOME_OFFSET, L1, L2);
-        z_plane = d1 + d2;   % shoulder / arm Z height
+        % ── Geometric FK ──────────────────────────────────────────
+        [ex, ey, ez, yaw_deg, p1x, p1y, p2x, p2y, z_arm] = ...
+            geomFK(j1, d2, j3, j4, d1, HOME_OFFSET, L1, L2, d_tool);
 
         % ── Ground plane ──────────────────────────────────────────
         fill3(ax, [-0.5 0.5 0.5 -0.5], [-0.5 -0.5 0.5 0.5], [0 0 0 0], ...
               [0.93 0.93 0.93], 'EdgeColor', 'none', 'FaceAlpha', 0.45);
 
-        % ── Base column (prismatic J2) ─────────────────────────────
+        % ── Base column ───────────────────────────────────────────
         plot3(ax, [0 0], [0 0], [0 d1], ...
               'Color', [0.5 0.5 0.5], 'LineWidth', 4);
-        % Prismatic extension indicator
         if d2 > 0.002
-            plot3(ax, [0 0], [0 0], [d1 z_plane], ...
+            plot3(ax, [0 0], [0 0], [d1 z_arm], ...
                   'Color', [0.7 0.7 0.7], 'LineWidth', 2.5, 'LineStyle', '--');
         end
         % Shoulder joint sphere
-        plot3(ax, 0, 0, z_plane, 'o', 'MarkerSize', 16, ...
+        plot3(ax, 0, 0, z_arm, 'o', 'MarkerSize', 16, ...
               'MarkerFaceColor', [0.4 0.6 0.9], 'MarkerEdgeColor', 'w', 'LineWidth', 1.5);
 
         % Home direction indicator (+Y)
-        plot3(ax, [0, 0], [0, 0.12], [z_plane z_plane], ...
+        plot3(ax, [0, 0], [0, 0.12], [z_arm z_arm], ...
               'g--', 'LineWidth', 1.2);
-        text(ax, 0.01, 0.13, z_plane, '+Y home', 'FontSize', 7, 'Color', [0 0.5 0]);
+        text(ax, 0.01, 0.13, z_arm, '+Y home', 'FontSize', 7, 'Color', [0 0.5 0]);
 
-        % ── Link 1 ────────────────────────────────────────────────
-        plot3(ax, [0 j2x], [0 j2y], [z_plane z_plane], ...
+        % ── Link 1  (shoulder → elbow) ────────────────────────────
+        plot3(ax, [p1x p2x], [p1y p2y], [z_arm z_arm], ...
               'Color', [0.14 0.39 0.71], 'LineWidth', 8);
 
-        % ── Link 2 ────────────────────────────────────────────────
-        plot3(ax, [j2x ex], [j2y ey], [z_plane z_plane], ...
+        % ── Link 2  (elbow → wrist) ───────────────────────────────
+        plot3(ax, [p2x ex], [p2y ey], [z_arm z_arm], ...
               'Color', [0.71 0.38 0.13], 'LineWidth', 8);
 
-        % ── EE orientation indicator ──────────────────────────────
-        ee_reach = 0.055;
-        plot3(ax, [ex, ex + ee_reach*cosd(yaw_deg)], ...
-                  [ey, ey + ee_reach*sind(yaw_deg)], ...
-                  [ez, ez], 'r-', 'LineWidth', 2.0);
+        % ── Tool (wrist → EE, straight down) ─────────────────────
+        plot3(ax, [ex ex], [ey ey], [z_arm ez], ...
+              'Color', [0.40 0.40 0.40], 'LineWidth', 3);
+
+        % ── EE orientation triad (RGB axes, tool-down convention) ────
+        %   X-axis (red)   : gripper approach / forward direction
+        %   Y-axis (green) : gripper lateral direction
+        %   Z-axis (blue)  : tool axis — points UP (+Z world) because
+        %                    the tool hangs down, so tool +Z faces up
+        triad_len = 0.055;   % arrow length (m)
+
+        % Unit vectors in world frame
+        %   Tool +X points along yaw_deg in XY plane
+        %   Tool +Y is 90° CCW from +X in XY plane
+        %   Tool +Z points straight up (away from tip, along tool shaft)
+        tx = cosd(yaw_deg);   ty = sind(yaw_deg);   % +X unit vec
+        lx = -sind(yaw_deg);  ly =  cosd(yaw_deg);  % +Y unit vec (lateral)
+
+        % X-axis — red
+        plot3(ax, [ex, ex + triad_len*tx], ...
+                  [ey, ey + triad_len*ty], ...
+                  [z_arm, z_arm], ...
+                  'Color', [0.85 0.15 0.15], 'LineWidth', 2.5);
+        text(ax, ex + triad_len*tx*1.15, ...
+                 ey + triad_len*ty*1.15, z_arm, ...
+                 'X', 'FontSize', 7, 'Color', [0.85 0.15 0.15], 'FontWeight', 'bold');
+
+        % Y-axis — green
+        plot3(ax, [ex, ex + triad_len*lx], ...
+                  [ey, ey + triad_len*ly], ...
+                  [z_arm, z_arm], ...
+                  'Color', [0.10 0.70 0.20], 'LineWidth', 2.5);
+        text(ax, ex + triad_len*lx*1.15, ...
+                 ey + triad_len*ly*1.15, z_arm, ...
+                 'Y', 'FontSize', 7, 'Color', [0.10 0.70 0.20], 'FontWeight', 'bold');
+
+        % Z-axis — blue (tool-down: +Z points upward along shaft)
+        plot3(ax, [ex, ex], [ey, ey], [ez, ez + triad_len], ...
+                  'Color', [0.10 0.30 0.90], 'LineWidth', 2.5);
+        text(ax, ex, ey, ez + triad_len*1.25, ...
+                 'Z', 'FontSize', 7, 'Color', [0.10 0.30 0.90], 'FontWeight', 'bold');
 
         % ── Joints ────────────────────────────────────────────────
-        scatter3(ax,  0,   0,   z_plane, 130, [0.20 0.70 0.45], 'filled', 'MarkerEdgeColor', 'w');
-        scatter3(ax, j2x, j2y, z_plane, 130, [0.20 0.70 0.45], 'filled', 'MarkerEdgeColor', 'w');
-        scatter3(ax, ex,  ey,  ez,      100, [0.80 0.20 0.20],  'filled', 'MarkerEdgeColor', 'w');
+        % J1 (shoulder)
+        scatter3(ax,  0,   0,   z_arm, 130, [0.20 0.70 0.45], 'filled', 'MarkerEdgeColor', 'w');
+        % J3 (elbow)
+        scatter3(ax, p2x, p2y, z_arm, 130, [0.20 0.70 0.45], 'filled', 'MarkerEdgeColor', 'w');
+        % J4 / wrist (XY position same as EE, at arm height)
+        scatter3(ax,  ex,  ey, z_arm,  90, [0.85 0.65 0.10], 'filled', 'MarkerEdgeColor', 'w');
+        % EE tip
+        scatter3(ax,  ex,  ey,   ez,  100, [0.80 0.20 0.20], 'filled', 'MarkerEdgeColor', 'w');
 
-        % ── EE-to-Z drop line (visual helper) ─────────────────────
+        % ── EE-to-ground drop line ────────────────────────────────
         plot3(ax, [ex ex], [ey ey], [0 ez], ':', 'Color', [0.6 0.6 0.6], 'LineWidth', 0.8);
 
         % ── Trail ─────────────────────────────────────────────────
@@ -381,9 +414,10 @@ drawRobot(state);
         end
 
         % ── Labels ────────────────────────────────────────────────
-        text(ax,  0.015,  0.015, z_plane+0.015, 'J1', 'FontSize', 9, 'Color', [0.2 0.2 0.2]);
-        text(ax, j2x+0.015, j2y+0.015, z_plane+0.015, 'J3', 'FontSize', 9, 'Color', [0.2 0.2 0.2]);
-        text(ax, ex+0.015,  ey+0.015,  ez+0.015, 'EE', 'FontSize', 9, 'Color', [0.7 0.1 0.1]);
+        text(ax,  0.015,  0.015, z_arm+0.015, 'J1', 'FontSize', 9, 'Color', [0.2 0.2 0.2]);
+        text(ax, p2x+0.015, p2y+0.015, z_arm+0.015, 'J3', 'FontSize', 9, 'Color', [0.2 0.2 0.2]);
+        text(ax,  ex+0.015,  ey+0.015, z_arm+0.015, 'J4', 'FontSize', 8, 'Color', [0.6 0.5 0.0]);
+        text(ax,  ex+0.015,  ey+0.015, ez+0.015,    'EE', 'FontSize', 9, 'Color', [0.7 0.1 0.1]);
 
         % ── EE info readout ───────────────────────────────────────
         lbl_ee.Text = sprintf( ...
@@ -394,74 +428,96 @@ drawRobot(state);
     end
 
 %% ═══════════════════════════════════════════════════════════════════
-%  KINEMATICS  (matching teleop.py compute_fk exactly)
+%  GEOMETRIC FORWARD KINEMATICS
 %% ═══════════════════════════════════════════════════════════════════
+%
+%  All revolute joints (J1, J3, J4) rotate about vertical (Z) axes.
+%  The arm lies entirely in the horizontal plane at z = d1 + d2.
+%  The tool hangs straight down by d_tool from the wrist (J4).
+%
+%  Inputs (all in joint / physical units):
+%    j1_deg   – J1 angle in joint degrees (home offset added internally)
+%    d2_m     – J2 prismatic extension in metres
+%    j3_deg   – J3 angle in joint degrees (relative to Link 1 direction)
+%    j4_deg   – J4 angle in joint degrees (gripper yaw, relative to Link 2)
+%    base_d   – fixed column height d1 (m)
+%    home_off – home offset in degrees (90° → +Y at joint zero)
+%    l1, l2   – link lengths (m)
+%    d_tool   – total vertical tool hang (m)
+%
+%  Outputs:
+%    ex, ey, ez  – EE tip position in world frame (m)
+%    yaw_deg     – EE yaw in world frame (deg)
+%    p1x, p1y    – shoulder position (J1 axis) in world XY
+%    p2x, p2y    – elbow position   (J3 axis) in world XY
+%    z_arm       – arm plane height (= d1 + d2)
 
-    % Full DH FK — returns EE position + yaw (matches teleop compute_fk)
-    % j1_joint_deg : J1 in JOINT space degrees (before home offset)
-    % d2_m         : J2 prismatic in metres
-    % j3_deg       : J3 in joint degrees
-    % j4_deg       : J4 in joint degrees
-    function [ex, ey, ez, yaw_deg] = fkFull(j1_joint_deg, d2_m, j3_deg, j4_deg, base_d, home_off)
-        th1 = deg2rad(j1_joint_deg) + deg2rad(home_off);  % world frame
-        th3 = deg2rad(j3_deg);
-        th4 = deg2rad(j4_deg);
-        d2  = d2_m;
+    function [ex, ey, ez, yaw_deg, p1x, p1y, p2x, p2y, z_arm] = ...
+            geomFK(j1_deg, d2_m, j3_deg, j4_deg, base_d, home_off, l1, l2, d_t)
 
-        % DH table: [a, alpha, d, theta]
-        dh = [0,     0,    base_d,   th1; ...   % J1
-              0,     0,    d2,       0;   ...    % J2 prismatic
-              0.24,  pi,   0,        th3; ...    % J3
-              0.147, 0,   -0.06375,  th4; ...    % J4
-              0,     0,   -0.1535,   0  ];       % EE offset
+        z_arm = base_d + d2_m;
 
-        T = eye(4);
-        for row = 1:size(dh,1)
-            a  = dh(row,1); al = dh(row,2);
-            d  = dh(row,3); th = dh(row,4);
-            ct = cos(th); st = sin(th);
-            ca = cos(al); sa = sin(al);
-            A = [ct, -st*ca,  st*sa, a*ct;
-                 st,  ct*ca, -ct*sa, a*st;
-                  0,  sa,     ca,    d;
-                  0,  0,      0,     1];
-            T = T * A;
-        end
-        ex      = T(1,4);
-        ey      = T(2,4);
-        ez      = T(3,4);
-        yaw_deg = rad2deg(atan2(T(2,1), T(1,1)));
+        % ── World-frame angles ────────────────────────────────────
+        % Link 1 points in direction w1 from the shoulder
+        w1      = j1_deg + home_off;           % deg, world frame
+        % Link 2 direction is cumulative: w1 + j3
+        w2      = w1 + j3_deg;                 % deg, world frame
+        % Gripper yaw is cumulative: w1 + j3 + j4
+        yaw_deg = w2 + j4_deg;                 % deg, world frame
+
+        % ── Joint positions ───────────────────────────────────────
+        % Shoulder (J1 axis) — at origin in XY
+        p1x = 0;
+        p1y = 0;
+
+        % Elbow (J3 axis) — end of Link 1
+        p2x = l1 * cosd(w1);
+        p2y = l1 * sind(w1);
+
+        % Wrist (J4 axis) — end of Link 2
+        wx  = p2x + l2 * cosd(w2);
+        wy  = p2y + l2 * sind(w2);
+
+        % EE tip — straight down from wrist by d_tool
+        ex  = wx;
+        ey  = wy;
+        ez  = z_arm - d_t;
     end
 
-    % Same as fkFull but also returns J2 elbow XY for drawing
-    function [ex, ey, ez, yaw_deg, j2x, j2y] = fkFullViz(j1_joint_deg, d2_m, j3_deg, j4_deg, base_d, home_off, l1, ~)
-        [ex, ey, ez, yaw_deg] = fkFull(j1_joint_deg, d2_m, j3_deg, j4_deg, base_d, home_off);
-        % Elbow joint XY (end of Link 1, in world frame)
-        th1_w = deg2rad(j1_joint_deg) + deg2rad(home_off);
-        j2x   = l1 * cos(th1_w);
-        j2y   = l1 * sin(th1_w);
-    end
+%% ═══════════════════════════════════════════════════════════════════
+%  INVERSE KINEMATICS  (planar SCARA, world-frame, elbow-up)
+%% ═══════════════════════════════════════════════════════════════════
+%
+%  Solves for [J1_joint_deg, J3_joint_deg] given a target XY in world
+%  frame.  J2 (height) and J4 (wrist yaw) are set independently.
+%
+%  Returns [] if target is outside reachable annulus.
 
-    % IK solver — operates in WORLD frame, returns [J1_joint_deg, J3_joint_deg]
-    % IK is purely planar (SCARA); J2/J4 set directly by sliders.
     function sol = ikSolveJoint(x_world, y_world, l1, l2, home_off)
         c3 = (x_world^2 + y_world^2 - l1^2 - l2^2) / (2*l1*l2);
         if abs(c3) > 1
             sol = [];
             return;
         end
-        j3_world = acosd(c3);                         % elbow-up, world frame
+        % j3 here is the elbow bend relative to Link 1 — this IS the
+        % SCARA joint angle (no sign confusion: positive = elbow-left)
+        j3_joint = acosd(c3);          % elbow-up solution, ≥ 0
+        % World angle of Link 1
         j1_world = atan2d(y_world, x_world) ...
-                   - atan2d(l2*sind(j3_world), l1 + l2*cosd(j3_world));
-        j1_joint = j1_world - home_off;               % convert to joint space
-        % Normalise J1 joint angle to [-180, 180]
-        j1_joint = mod(j1_joint + 180, 360) - 180;
-        sol = [j1_joint, j3_world];                   % [J1 joint deg, J3 world=joint deg]
+                   - atan2d(l2*sind(j3_joint), l1 + l2*cosd(j3_joint));
+        % Convert to joint space
+        j1_joint = j1_world - home_off;
+        j1_joint = mod(j1_joint + 180, 360) - 180;   % normalise to [-180,180]
+        sol = [j1_joint, j3_joint];
     end
+
+%% ═══════════════════════════════════════════════════════════════════
+%  TRAJECTORY  (quintic smoothstep interpolation)
+%% ═══════════════════════════════════════════════════════════════════
 
     function Q = jtraj_simple(q0, qf, n)
         t = linspace(0, 1, n)';
-        s = 6*t.^5 - 15*t.^4 + 10*t.^3;   % quintic smoothstep
+        s = 6*t.^5 - 15*t.^4 + 10*t.^3;
         Q = q0 + s .* (qf - q0);
     end
 

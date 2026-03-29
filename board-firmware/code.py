@@ -1,10 +1,11 @@
 import supervisor
 import sys
 import board
-from async_pin import AsyncPin, AsyncInput
+from async_pin import AsyncPin, AsyncInput, AsyncContinuousServo
 
 active_outputs = {}
 active_inputs = {}
+active_servos = {}
 
 def get_output(pin_id):
     if pin_id not in active_outputs:
@@ -15,6 +16,11 @@ def get_input(pin_id):
     if pin_id not in active_inputs:
         active_inputs[pin_id] = AsyncInput(pin_id, pull_up=True)
     return active_inputs[pin_id]
+
+def get_servo(pin_id):
+    if pin_id not in active_servos:
+        active_servos[pin_id] = AsyncContinuousServo(pin_id)
+    return active_servos[pin_id]
 
 # Pre-config input pins
 # SW_NO1 -> GP16
@@ -32,9 +38,12 @@ for limit_sw_pin in [16, 17, 18, 19]:
 # GP4 -> PUL+ #3
 # GP5 -> DIR+ #3
 # GP6 -> PUL+ #4
-# GP7 -> DIR+ #4
-for limit_sw_pin in [0, 1, 2, 3, 4, 5, 6, 7]:
-    get_output(limit_sw_pin)
+# GP26 -> DIR+ #4
+for steppers_pin in [0, 1, 2, 3, 4, 5, 6, 26]:
+    get_output(steppers_pin)
+
+# GP7 -> SIG (SERVO)
+get_servo(7)
 
 print("MOTION 2350: SCARA GPIO Bridge Ready.")
 
@@ -72,6 +81,21 @@ while True:
                     spd = float(parts[3])
                     get_output(pin).blink(cnt, spd)
                     print(f"ACK: Blink GP{pin}")
+
+                # --- S: SERVO THROTTLE (Infinite) ---
+                elif cmd == "S" and len(parts) >= 3:
+                    pin = int(parts[1])
+                    throttle = float(parts[2])
+                    get_servo(pin).set_throttle(throttle)
+                    print(f"ACK: Servo GP{pin}={throttle}")
+                    
+                # --- T: TIMED SERVO MOVE ---
+                elif cmd == "T" and len(parts) >= 4:
+                    pin = int(parts[1])
+                    throttle = float(parts[2])
+                    duration = float(parts[3])
+                    get_servo(pin).move_timed(throttle, duration)
+                    print(f"ACK: Timed Move GP{pin} Spd={throttle} Dur={duration}s")
 
         except ValueError:
             print("ERR: Parse")

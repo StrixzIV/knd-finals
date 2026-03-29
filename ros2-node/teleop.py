@@ -18,7 +18,7 @@ MOTORS = {
     'M1': {'pul': 0, 'dir': 1, 'steps_per_unit': 1000 / 45.0, 'limit': 80.0, 'pos': 0.0, 'name': 'Base (J1)', 'ready_time': 0.0},
     'M2': {'pul': 2, 'dir': 3, 'steps_per_unit': 1000 / 2.0,  'limit': 13.0, 'pos': 0.0, 'name': 'Z-Axis (J2)', 'ready_time': 0.0},
     'M3': {'pul': 4, 'dir': 5, 'steps_per_unit': 1000 / 60.0, 'limit': 80.0, 'pos': 0.0, 'name': 'Elbow (J3)', 'ready_time': 0.0},
-    'M4': {'pul': 6, 'dir': 7, 'steps_per_unit': 100 / 15.0,  'limit': 80.0, 'pos': 0.0, 'name': 'Wrist (J4)', 'ready_time': 0.0}
+    'M4': {'pul': 6, 'dir': 26, 'steps_per_unit': 100 / 15.0,  'limit': 80.0, 'pos': 0.0, 'name': 'Wrist (J4)', 'ready_time': 0.0}
 }
 
 # --- KEYBOARD MAPPING ---
@@ -28,7 +28,14 @@ KEY_BINDINGS = {
     'w': ('M2', 1),  's': ('M2', -1),
     'e': ('M3', 1),  'd': ('M3', -1),
     'r': ('M4', 1),  'f': ('M4', -1),
+    't': ('GRIPPER', -0.1),   # Open (Forward Throttle)
+    'g': ('GRIPPER', 0.1),    # Close (Reverse Throttle)
 }
+
+# --- GRIPPER SETTINGS ---
+# Duration (seconds) per keypress. Tune this to match your gripper's travel.
+# Increase if one press moves too little; decrease if it overextends.
+GRIPPER_PULSE_DURATION = 0.1  # 150ms per deliberate keypress
 
 INSTRUCTIONS = """
 SCARA RPRR Teleop Controller
@@ -40,6 +47,7 @@ Moving Joints (Degrees / cm):
    W / S : Z-Axis   (+ / -)
    E / D : Elbow J3 (+ / -)
    R / F : Wrist J4 (+ / -)
+   T / G : Gripper  (Open / Close)
 
 Settings:
    + / - : Increase/Decrease Jog Step Size
@@ -52,9 +60,14 @@ class ScaraTeleop(Node):
         self.pub_out = self.create_publisher(String, '/scara/gpio/out', 10)
         
         # Default movement step sizes per keystroke
-        self.jog_deg = 5.0  # Move 5 degrees per keystroke
-        self.jog_cm = 0.5   # Move 0.5 cm per keystroke
-        self.pulse_speed = 0.001 # 1ms half-period (500 steps/sec)
+        self.jog_deg = 5.0    # Move 5 degrees per keystroke
+        self.jog_cm = 0.5     # Move 0.5 cm per keystroke
+        self.pulse_speed = 0.001  # 1ms half-period (500 steps/sec)
+
+        # --- GRIPPER RATE LIMITER ---
+        # Tracks when the gripper will be done executing its current move.
+        # Auto-repeat keypresses that arrive before this time are dropped.
+        self.gripper_ready_time = 0.0
 
         self.get_logger().info("SCARA Teleop Node Started.")
         print(INSTRUCTIONS)
@@ -116,6 +129,27 @@ class ScaraTeleop(Node):
                   f"M4:{MOTORS['M4']['pos']:.1f}°")
         
         print(f"{status:<130}", end='', flush=True)
+
+    def move_gripper(self, throttle):
+        now = time.time()
+
+        # Rate limiter: drop auto-repeat keypresses while the servo is still
+        # executing the previous timed command. Only one pulse per intentional press.
+        if now < self.gripper_ready_time:
+            return
+
+        duration = GRIPPER_PULSE_DURATION
+
+        # Lock out further commands until this move finishes
+        self.gripper_ready_time = now + duration
+
+        msg = String()
+        msg.data = f"7:T:{throttle}:{duration}"
+        self.pub_out.publish(msg)
+        
+        direction = "Open" if throttle < 0 else "Close"
+        print(f"\n[GRIPPER] {direction} (Throttle: {throttle}, Duration: {duration}s)")
+        self.print_status()
 
     def move_motor(self, motor_key, direction):
         m = MOTORS[motor_key]
@@ -185,8 +219,11 @@ def main(args=None):
         while rclpy.ok():
             key = get_key(settings)
             if key in KEY_BINDINGS:
-                motor, direction = KEY_BINDINGS[key]
-                node.move_motor(motor, direction)
+                target, direction = KEY_BINDINGS[key]
+                if target == 'GRIPPER':
+                    node.move_gripper(direction)
+                else:
+                    node.move_motor(target, direction)
             elif key == '+':
                 node.adjust_jog_size(1.5)
             elif key == '-':

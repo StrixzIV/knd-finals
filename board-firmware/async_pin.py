@@ -1,6 +1,9 @@
+import pwmio
 import board
-import digitalio
 import time
+import digitalio
+
+from adafruit_motor import servo
 
 class AsyncPin:
     def __init__(self, pin_id):
@@ -80,3 +83,41 @@ class AsyncInput:
                 val_int = 1 if current_value else 0
                 return f"E:{self.pin_id}:{val_int}" 
         return None
+    
+
+class AsyncContinuousServo:
+    
+    def __init__(self, pin_id):
+        self.pin_id = pin_id
+        pin_name = "GP{}".format(pin_id)
+        if hasattr(board, pin_name):
+            p = getattr(board, pin_name)
+            self.pwm = pwmio.PWMOut(p, frequency=50)
+            self.servo = servo.ContinuousServo(self.pwm)
+        else:
+            self.servo = None
+            
+        self.target_time_ns = 0
+        self.is_moving_timed = False
+
+    def set_throttle(self, value):
+        """Manual override: Set infinite continuous throttle"""
+        if not self.servo: return
+        self.is_moving_timed = False # Cancel any timed moves
+        clamped_value = max(-1.0, min(1.0, float(value)))
+        self.servo.throttle = clamped_value
+
+    def move_timed(self, throttle, duration_s):
+        """Move at a specific throttle for a set duration in seconds"""
+        if not self.servo: return
+        clamped_value = max(-1.0, min(1.0, float(throttle)))
+        self.servo.throttle = clamped_value
+        self.target_time_ns = time.monotonic_ns() + int(duration_s * 1_000_000_000)
+        self.is_moving_timed = True
+
+    def update(self):
+        """Check if a timed move has finished"""
+        if self.is_moving_timed:
+            if time.monotonic_ns() >= self.target_time_ns:
+                self.servo.throttle = 0.0 # Stop the servo
+                self.is_moving_timed = False
